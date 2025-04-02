@@ -9,9 +9,9 @@ import random
 
 # define the parameters
 PARAMS = {
-    'P': 3,        # number of caissons
+    'P': 4,        # number of caissons
     'T': 30,      # horizon
-    'Cmax': 5,      # maximum number of tasks of one cluster
+    'Cmax': 3,      # maximum number of tasks of one cluster
     'window_size': 14,   # window size
     'advanced': 5,          # advanced time
     'K': 5.993         # leakage coefficient
@@ -19,20 +19,20 @@ PARAMS = {
 
 # initialize the random values
 random.seed(42)
-alpha_values = [round(random.uniform(0.03, 0.08), 3) for _ in range(PARAMS['P'])]
-# alpha_values = [round(random.uniform(0.01, 0.05), 3) for _ in range(PARAMS['P'])]
+# alpha_values = [round(random.uniform(0.03, 0.08), 3) for _ in range(PARAMS['P'])]
+alpha_values = [round(random.uniform(0.01, 0.05), 3) for _ in range(PARAMS['P'])]   # degradation rate for each caisson
 initial_p_values = [round(random.uniform(3.2, 3.5), 2) for i in range(PARAMS['P'])]
 print("alpha values:", alpha_values)
 
-
-def clustering_CR(df_window, window_size, window_start):
+# function to group the tasks within a window
+def clustering_CR(df_window, window_size, window_start, global_task_count):
     """Grouping model"""
     # add preprocessing here
     if df_window.empty or window_size < 1:
         print(f"warning: window {window_start} has no tasks or window size is invalid")
         return df_window  # return the original dataframe if no tasks in the window
 
-    N = df_window.shape[0]
+    N = df_window.shape[0]  # number of tasks in the window
 
     mdl = Model('Dynamic_Window_Clustering')
     
@@ -42,40 +42,58 @@ def clustering_CR(df_window, window_size, window_start):
     cluster = mdl.binary_var_list(window_size, name='cluster')
     a = mdl.integer_var_list(N, name='a', lb=0, ub=window_size)
     b = mdl.integer_var_list(N, name='b', lb=0, ub=window_size)
+    # define auxiliary variable z
+    z = mdl.binary_var_matrix(window_size, window_size, name='z')
 
     M1 = 1
     M = 10
     # objective function
     mdl.minimize(mdl.sum(cluster[k] for k in range(window_size)))
     
-    
-    # cluster constraint
+    # # linearization of the auxiliary variable z
+    # mdl.add_constraints(z[k, t] <= theta[n, k] for n in range(N) for k in range(window_size) for t in range(window_size))
+    # mdl.add_constraints(z[k, t] <= center[k, t] for k in range(window_size) for t in range(window_size))
+    # mdl.add_constraints(z[k, t] >= theta[n, k] + center[k, t] - 1 for n in range(N) for k in range(window_size) for t in range(window_size))
+        
+    # at least one tasks needed to activate the cluster
     mdl.add_constraints(theta[n, k] <= cluster[k] for n in range(N) for k in range(window_size))
+    # every task must be assigned to one cluster
     mdl.add_constraints(mdl.sum(theta[n, k] for k in range(window_size)) == 1 for n in range(N))
     
-    # maximum capacity constraint
+    # maximum capacity in each cluster
     mdl.add_constraints(mdl.sum(theta[n, k] for n in range(N)) <= PARAMS['Cmax'] for k in range(window_size))
     
-    # only one center constraint
+    # Each cluster only have one center
     mdl.add_constraints(mdl.sum(center[k, t] for t in range(window_size)) == cluster[k] for k in range(window_size))
 
-    # only one cluster max each day
-    mdl.add_constraints(mdl.sum(center[k, t] for k in range(window_size)) <= 3 for t in range(window_size))
+    # we can only have one cluster each day
+    mdl.add_constraints(mdl.sum(center[k, t] for k in range(window_size)) <= 1 for t in range(window_size))
     # mdl.add_constraints(theta[n, k] <= mdl.sum(center[k, t] for t in range(window_size)) for n in range(N) for k in range(window_size))
+
+    # # 添加全局约束：确保每一天的任务总数不超过 PARAMS['Cmax']
+    # for t in range(window_start, window_start + window_size):
+    #     mdl.add_constraint(global_task_count[t] + mdl.sum(theta[n, k] for n in range(N) for k in range(window_size) if t == (window_start + k)) <= PARAMS['Cmax'])
+
+    # mdl.add_constraints(theta[n, k] <= mdl.sum(center[k, t] for t in range(window_size)) for n in range(N) for k in range(window_size))
+
+    # mdl.add_constraints(mdl.sum(theta[n, k] for n in range(N)) * center[k, t] <= PARAMS['Cmax'] for k in range(window_size) for t in range(window_size))
+    # # 替换原来的非线性约束
+    # mdl.add_constraints(mdl.sum(z[k, t] for n in range(N)) <= PARAMS['Cmax'] for k in range(window_size) for t in range(window_size))
 
 
     # task grouping and center determination
     # print(theta.keys())  # make sure (n, k) is in keys
     # print(center.keys())  # make sure (k, t) is in keys
 
+    # define the possible advanced or delayed range for each task
     for n in range(N):
         local_time = df_window.iloc[n]['window_time']
     #     # print(local_time)
         mdl.add_constraint(a[n] >= local_time - PARAMS['advanced'])
         mdl.add_constraint(a[n] >= 0)
         mdl.add_constraint(b[n] <= local_time + int((3.2 - 3.0)/alpha_values[int(df_window.iloc[n]["CSEM"])]))
-        # mdl.add_constraint(b[n] <= window_size)
-        mdl.add_constraint(b[n] <= 5)
+        mdl.add_constraint(b[n] <= window_size)
+        # mdl.add_constraint(b[n] <= 5)
 
         for t in range(window_size):
             mdl.add_constraints(t * center[k,t] >= a[n] - M * (1 - theta[n, k]) - M * (1 - center[k, t]) for k in range(window_size))
@@ -90,6 +108,7 @@ def clustering_CR(df_window, window_size, window_start):
         return None
     
     # result processing
+    # convert local time back to original time and get the center for each task
     centers = {}
     for n in range(N):
         for k in range(window_size):
@@ -99,7 +118,7 @@ def clustering_CR(df_window, window_size, window_start):
                     centers[n] = t + window_start  # change the time back to the original time
                     break
 
-    # update the center column of the dataframe
+    # update the center column of the original global dataframe
     for n in range(N):
         for k in range(window_size):
             if solution.get_value(theta[n, k]) == 1.0:
@@ -107,6 +126,7 @@ def clustering_CR(df_window, window_size, window_start):
 
     return df_window
 
+# function to calculate the gas leakage before clustering
 def calculate_gas_leakage_before(df, T):
     total_leakage = 0
 
@@ -137,7 +157,7 @@ def calculate_gas_leakage_before(df, T):
 
     return total_leakage
 
-
+# function to calculate the gas leakage after clustering
 def calculate_gas_leakage_after(df, T):
     total_leakage = 0
 
@@ -176,6 +196,8 @@ def main(window_size):
     """Main function"""
     df = pd.read_csv('maintenance_plan.csv')
     df['CENTER'] = 0  # initialize the center column
+    # 全局变量：记录每一天的任务数量
+    global_task_count = [0] * PARAMS['T']
     window_start = 0
     while window_start <= PARAMS['T'] - window_size:
         # dynamic window selection
@@ -186,12 +208,16 @@ def main(window_size):
         # task local time conversion
         window_df['window_time'] = window_df['DATE'] - window_start
         print("window", window_df)
+        # get only first tasks of each caisson in the window
         first_tasks = window_df.groupby('CSEM', as_index=False).first()
         print("first tasks", first_tasks)
         # print(alpha_values)
     
-        # clustering
-        clustered_df = clustering_CR(first_tasks, window_size, window_start)
+        # window_df.loc[df['window_time'] != 0, 'CENTER'] = 0  # reset the center column for the current window
+
+
+        # clustering these first tasks in the window
+        clustered_df = clustering_CR(first_tasks, window_size, window_start, global_task_count)
         # print(clustered_df)
         
         if clustered_df is not None:
@@ -200,21 +226,29 @@ def main(window_size):
             
             # update the secondary tasks time
             update_secondary_tasks(df, clustered_df, window_start, window_end)
+
+            # update the center column of the original dataframe
             
+            # 更新全局任务计数列表
+            for _, row in clustered_df.iterrows():
+                task_date = row['CENTER']
+                global_task_count[task_date] += 1
         # slide the window
-        window_start += int(window_size/2)
+        window_start += int(window_size/2)  # overlapping window
+        # window_start += window_size   # non-overlapping window
 
     # Updates the center column of the RE operation, which will not be grouped
     df.loc[df['OPERATION'] == "y", 'CENTER'] = df.loc[df['OPERATION'] == "y", 'DATE']
 
     # Processing of the remaining tasks that are not assigned to a center and cannot be updated
-    mask_remain = (df['OPERATION'] == "x") & (df['CENTER'] == 0)
-    df.loc[mask_remain, 'CENTER'] = df.loc[mask_remain, 'DATE']
+    # mask_remain = (df['OPERATION'] == "x") & (df['CENTER'] == 0)
+    # df.loc[mask_remain, 'CENTER'] = df.loc[mask_remain, 'DATE']
 
     # result verification
     # assert df['CENTER'].notna().all(), "Some tasks are not clustered"
     return df
 
+# function to update the secondary tasks date of each window
 def update_secondary_tasks(main_df, clustered_df, window_start, window_end):
     """Update the secondary tasks time"""
     for caisson in clustered_df["CSEM"].unique():
