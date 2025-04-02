@@ -1,0 +1,32 @@
+// Sliding Window Framework
+digraph {
+	A [label="Start: Initialize Parameters
+(window_size, global_task_count, etc.)" color=lightblue shape=ellipse style=filled]
+	B [label="Select Sliding Window
+(window_start, window_end)" shape=box]
+	C [label="Filter Tasks in Current Window
+(DATE >= window_start & DATE < window_end)" shape=box]
+	D [label="Preprocess Tasks
+- Convert to Relative Time
+- Extract First Tasks per System" shape=box]
+	E [label="Cluster First Tasks
+- Assign to Centers
+- Update Global Task Counts" shape=box]
+	F [label="Update Secondary Tasks
+- Adjust Times for Related Tasks
+- Update CENTER Column" shape=box]
+	G [label="Slide the Window
+(window_start += window_size/2)" shape=box]
+	H [label="End of Timeline?" shape=diamond]
+	I [label="Finalize Remaining Tasks
+Output Final Maintenance Plan" color=lightgreen shape=ellipse style=filled]
+	A -> B
+	B -> C
+	C -> D
+	D -> E
+	E -> F
+	F -> G
+	G -> H
+	H -> B [label=No]
+	H -> I [label=Yes]
+}

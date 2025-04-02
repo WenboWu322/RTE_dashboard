@@ -241,8 +241,8 @@ def main(window_size):
     df.loc[df['OPERATION'] == "y", 'CENTER'] = df.loc[df['OPERATION'] == "y", 'DATE']
 
     # Processing of the remaining tasks that are not assigned to a center and cannot be updated
-    # mask_remain = (df['OPERATION'] == "x") & (df['CENTER'] == 0)
-    # df.loc[mask_remain, 'CENTER'] = df.loc[mask_remain, 'DATE']
+    mask_remain = (df['OPERATION'] == "x") & (df['CENTER'] == 0)
+    df.loc[mask_remain, 'CENTER'] = df.loc[mask_remain, 'DATE']
 
     # result verification
     # assert df['CENTER'].notna().all(), "Some tasks are not clustered"
@@ -329,7 +329,7 @@ if __name__ == "__main__":
 
     # plot2:
     fig, ax = plt.subplots(figsize=(10, 6))
-
+    result_df.to_csv('result_vis.csv', index=False)
     for i, csem in enumerate(sorted(result_df['CSEM'].unique())):
         # horizontal line for each CSEM
         ax.hlines(y=i, xmin=0, xmax=PARAMS['T'], color='gray', linewidth=1)
