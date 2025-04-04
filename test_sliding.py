@@ -10,7 +10,7 @@ import random
 # define the parameters
 PARAMS = {
     'P': 4,        # number of caissons
-    'T': 30,      # horizon
+    'T': 28,      # horizon
     'Cmax': 3,      # maximum number of tasks of one cluster
     'window_size': 14,   # window size
     'advanced': 5,          # advanced time
@@ -45,10 +45,13 @@ def clustering_CR(df_window, window_size, window_start, global_task_count):
     # define auxiliary variable z
     z = mdl.binary_var_matrix(window_size, window_size, name='z')
 
+
     M1 = 1
     M = 10
     # objective function
     mdl.minimize(mdl.sum(cluster[k] for k in range(window_size)))
+ 
+
     
     # # linearization of the auxiliary variable z
     # mdl.add_constraints(z[k, t] <= theta[n, k] for n in range(N) for k in range(window_size) for t in range(window_size))
@@ -62,6 +65,7 @@ def clustering_CR(df_window, window_size, window_start, global_task_count):
     
     # maximum capacity in each cluster
     mdl.add_constraints(mdl.sum(theta[n, k] for n in range(N)) <= PARAMS['Cmax'] for k in range(window_size))
+
     
     # Each cluster only have one center
     mdl.add_constraints(mdl.sum(center[k, t] for t in range(window_size)) == cluster[k] for k in range(window_size))
@@ -81,6 +85,9 @@ def clustering_CR(df_window, window_size, window_start, global_task_count):
     # mdl.add_constraints(mdl.sum(z[k, t] for n in range(N)) <= PARAMS['Cmax'] for k in range(window_size) for t in range(window_size))
 
 
+
+
+
     # task grouping and center determination
     # print(theta.keys())  # make sure (n, k) is in keys
     # print(center.keys())  # make sure (k, t) is in keys
@@ -97,10 +104,12 @@ def clustering_CR(df_window, window_size, window_start, global_task_count):
 
         for t in range(window_size):
             mdl.add_constraints(t * center[k,t] >= a[n] - M * (1 - theta[n, k]) - M * (1 - center[k, t]) for k in range(window_size))
-            mdl.add_constraints(t * center[k,t] <= b[n] + M * (1 - theta[n, k]) for k in range(window_size))
+            mdl.add_constraints(t * center[k,t] <= b[n] + M1 * (1 - theta[n, k]) for k in range(window_size))
 
     # solve the model
     solution = mdl.solve()
+
+    print(mdl.solve_details)
 
 
     if not solution:
@@ -195,7 +204,8 @@ def calculate_gas_leakage_after(df, T):
 def main(window_size):
     """Main function"""
     df = pd.read_csv('maintenance_plan.csv')
-    df['CENTER'] = 0  # initialize the center column
+    # df['CENTER'] = 0  # initialize the center column
+    df['CENTER'] = df['DATE']  # initialize the center column   # ljlkhhkj
     # 全局变量：记录每一天的任务数量
     global_task_count = [0] * PARAMS['T']
     window_start = 0
@@ -261,7 +271,7 @@ def update_secondary_tasks(main_df, clustered_df, window_start, window_end):
         if len(tasks) > 1:
             # get the second task index
             second_idx = tasks.index[1]
-            main_df.loc[second_idx, 'CENTER'] = 0
+            # main_df.loc[second_idx, 'CENTER'] = 0
             # get the previous center time amd calculate the new time for the second task
             center_time = clustered_df.loc[clustered_df['CSEM'] == caisson, 'CENTER'].iloc[0]
             

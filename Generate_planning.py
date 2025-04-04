@@ -2,7 +2,7 @@ import pandas as pd
 import random
 
 # define caissons nb of caissons
-N = 4
+N = 40
 T = 30
 caissons = caissons = [i for i in range(N)]  # Index starts from 0
 
@@ -52,6 +52,7 @@ def generate_tasks(initial_p_values, T, alpha_values, x_counts):
                 operation = 'y'  # RE
                 data.append([index, caisson, initial_p, operation, total_days + time_to_3_2])
                 total_days += time_to_3_2 + 1  # RE task takes 1 day
+                index +=1
                 break  # after RE, the maintenance plan is finished
             
             index += 1
